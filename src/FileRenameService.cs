@@ -17,6 +17,12 @@ public class FileRenameService(IList<TagLib.File> taggedFiles)
                 Console.WriteLine("File {0} does not exist.", source.Name);
                 continue;
             }
+
+            if (source.DirectoryName == null)
+            {
+                Console.WriteLine("File {0} does not have a parent directory.", source.Name);
+                continue;
+            }
     
             var destination = Path.Combine(source.DirectoryName, FormatTitle(file));
     

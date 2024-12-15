@@ -6,17 +6,30 @@ using SlskdEvent;
 
 public static class Program
 {
-    static string[] audioFileTypes = [".flac", ".wav", ".mp3"];
-    
     public static void Main(string[] args)
     {
         // Read env vars to build file paths for IO operations
         IConfiguration config = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build();
-        string downloadsPath = Path.Combine(config["basePath"], config["downloads"]);
-        string musicPath = Path.Combine(config["basePath"], config["music"]);
+        
+        var audioFileTypes = config.GetSection("audioFileTypes").Get<string[]>();
+        if (audioFileTypes == null || audioFileTypes.Length == 0)
+        {
+            throw new Exception("Audio file types not set");
+        }
+        
+        var basePath = config["basePath"];
+        var downloads = config["downloads"];
+        var music = config["music"];
+        if (string.IsNullOrEmpty(basePath) || string.IsNullOrEmpty(downloads) || string.IsNullOrEmpty(music))
+        {
+            throw new Exception("Base path, downloads, or music directory not set");
+        }
+        
+        var downloadsPath = Path.Combine(basePath, downloads);
+        var musicPath = Path.Combine(basePath, music);
         
         // Read event JSON into memory
-        string jsonString = File.ReadAllText("event_test.json");
+        var jsonString = File.ReadAllText("event_test.json");
         
         var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         var eventJson = new SlskdEventParser(options).ParseEvent(jsonString);
