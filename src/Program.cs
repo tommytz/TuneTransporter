@@ -1,99 +1,91 @@
 ﻿namespace TuneTransporter;
 
-using System.Text.Json;
 using Microsoft.Extensions.Configuration;
-using SlskdEvent;
+using DirectorySelector;
 
 public static class Program
 {
     public static void Main(string[] args)
     {
-        // Read env vars to build file paths for IO operations
+        // Read config values into memory. Consider using IOptions if it makes sense?
+        // Read environment variables if they are provided?
+        // env vars > config
         IConfiguration config = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build();
         
+        // e.g. [".flac", ".wav"]
         var audioFileTypes = config.GetSection("audioFileTypes").Get<string[]>();
         if (audioFileTypes == null || audioFileTypes.Length == 0)
         {
             throw new Exception("Audio file types not set");
         }
-        
-        var basePath = config["basePath"];
-        var downloads = config["downloads"];
-        var music = config["music"];
-        if (string.IsNullOrEmpty(basePath) || string.IsNullOrEmpty(downloads) || string.IsNullOrEmpty(music))
+
+        var downloadsPath = config.GetValue<string>("downloadsPath");
+        var musicPath = config.GetValue<string>("musicPath");
+
+        if (string.IsNullOrEmpty(downloadsPath) || string.IsNullOrEmpty(musicPath))
         {
-            throw new Exception("Base path, downloads, or music directory not set");
+            throw new Exception("Downloads path or music path not set");
         }
         
-        var downloadsPath = Path.Combine(basePath, downloads);
-        var musicPath = Path.Combine(basePath, music);
-        
-        // Read event JSON into memory
-        var jsonString = File.ReadAllText("event_test.json");
-        
-        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-        var eventJson = new SlskdEventParser(options).ParseEvent(jsonString);
+        // Read event JSON or start interactive CLI session
+        var directorySelector = new DirectorySelectorFactory(args, downloadsPath).Create();
+        var directoryPath = directorySelector.GetTargetDirectory();
         
         // Scan album directory files
-        var directoryPath = Path.Combine(downloadsPath, eventJson.Name);
         // Add a check here that directory path does actually exist since the files could have been moved before the event was processed
-        List<string> files = Directory.EnumerateFiles(directoryPath).ToList();
         // Add a check here that there are any audio files/any files at all before moving to renaming, etc
+        // Get metadata of all the audio files and prepare them for file transfer
+        List<string> filePaths = Directory.EnumerateFiles(directoryPath).ToList();
+        IList<TrackInfo> trackList = new List<TrackInfo>();
         
-        // Get metadata of all the audio files and rename them using it
-        var audioFiles = files.Where(f => audioFileTypes.Contains(Path.GetExtension(f))).ToList();
-        var taggedFiles = audioFiles.Select((file) => TagLib.File.Create(file)).ToList().OrderBy(f => f.Tag.Track).ToList();
-        var renamedFiles = new FileRenameService(taggedFiles).RenameFiles();
+        try
+        {
+            trackList = filePaths
+                .Where(f => audioFileTypes.Contains(Path.GetExtension(f)))
+                .Select(f => new TrackInfo(f))
+                .OrderBy(t => t.Track)
+                .ToList();
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine("Unable to parse metadata from audio files: {0}", e.Message);
+            Environment.Exit(1);
+        }
+
+        if (!trackList.Any())
+        {
+            Console.Error.WriteLine("No audio files found in directory");
+            Environment.Exit(1);
+        }
         
-        // Move the album directory to the music directory
-        new DirectoryMoveService(directoryPath, musicPath, taggedFiles).MoveDirectory();
+        var pathHelper = new PathHelper(musicPath);
+        
+        var fileTransfers = new List<FileTransfer>();
+
+        foreach (var trackFile in trackList)
+        {
+            var previousPath = trackFile.FullName;
+            trackFile.Name = pathHelper.FormatName(trackFile);
+            
+            var transfer = new FileTransfer(trackFile, previousPath);
+            fileTransfers.Add(transfer);
+        }
+        
+        // Attempt to transfer files, and bail out if anything isn't right
+        var directoryService = new DirectoryService(pathHelper, audioFileTypes);
+        
+        var transferResult = directoryService.MoveFiles(fileTransfers);
+        
+        // Cleanup the directory left behind if the files have moved
+        if (transferResult)
+        {
+            Console.WriteLine("Files transferred successfully. Cleaning up directory...");
+            directoryService.CleanUp(directoryPath);
+        }
+        else
+        {
+            Console.WriteLine("File transfer failed.");
+            Environment.Exit(1);
+        }
     }
 }
-
-// Check if all the songs have the same artist and album
-// if (!AudioFile.AllSameArtist(audioFiles))
-// {
-//     Console.WriteLine("The audio files in this directory do not all have the same artist.");
-//     return;
-// }
-//
-// if (!AudioFile.AllSameAlbum(audioFiles))
-// {
-//     Console.WriteLine("The audio files in this directory do not all have the same album.");
-//     return;
-// }
-
-// public static bool AllSameArtist(IEnumerable<AudioFile> audioFiles)
-// {
-//     return audioFiles.Select(af => af.Artist).Distinct().Count() == 1;
-// }
-//
-// public static bool AllSameAlbum(IEnumerable<AudioFile> audioFiles)
-// {
-//     return audioFiles.Select(af => af.Album).Distinct().Count() == 1;
-// }
-
-// var soulseekDirs = Directory.EnumerateFileSystemEntries(downloadsPath).ToList();
-// Console.WriteLine("Soulseek directory contents:\n");
-// foreach (var item in soulseekDirs.Select((v, i) => new { Value = v, Index = i }))
-// {
-//     Console.WriteLine("({0}) {1}", item.Index, Path.GetFileName(item.Value));
-// }
-//
-// Console.WriteLine("\nChoose a directory or ENTER to exit:");
-// var input = Console.ReadKey();
-//
-// while (!char.IsDigit(input.KeyChar) && input.Key != ConsoleKey.Enter)
-// {
-//     Console.WriteLine("Invalid input. Please enter a number or ENTER to exit.");
-//     input = Console.ReadKey();
-// }
-//
-// if (input.Key == ConsoleKey.Enter)
-// {
-//     Console.WriteLine("Exiting...");
-//     return;
-// }
-//
-// var index = int.Parse(input.KeyChar.ToString());
-// var directoryPath = soulseekDirs[index];
