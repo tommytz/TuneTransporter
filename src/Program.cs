@@ -1,9 +1,11 @@
-﻿namespace TuneTransporter;
-
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Serilog;
+
+namespace TuneTransporter;
+
 using Slskd;
 
 // TODO: Make the stdinput stream reading more robust
@@ -15,22 +17,45 @@ using Slskd;
 //  - This allows the slskd container to use env vars in the docker compose for the downloads and music path
 //  - Also allows it to be different outside of the container
 
+// TODO: Accept cli args as well as stdin stream so it can be run outside of slskd events
+//  - This would allow it to be run outside of the container as well
+//  - It would check if there are any cli args, and if not read from stdin
+
 public static class Program
 {
-    private const string DownloadsPath = "/home/thomas/.local/share/slskd/downloads";
-    private const string MusicPath = "/home/thomas/.local/share/slskd/music";
     private static readonly string[] FileExtensions = [".flac", ".wav", ".mp3", ".m4a"];
 
     public static void Main()
     {
-        using ILoggerFactory loggerFactory = LoggerFactory.Create(builder => builder.AddSerilog(NewLogger()));
+        IConfiguration config = new ConfigurationBuilder().AddEnvironmentVariables(prefix: "TUNE_TRANSPORTER_").Build();
+        
+        var downloadsPath = config["DOWNLOADS_PATH"];
+        var musicPath = config["MUSIC_PATH"];
+        var logPath = config["LOG_PATH"];
+
+        if (string.IsNullOrEmpty(logPath))
+        {
+            logPath = Path.Combine(Directory.GetCurrentDirectory(), "tune-transporter.log");
+        }
+        
+        using ILoggerFactory loggerFactory = LoggerFactory.Create(builder => builder.AddSerilog(NewLogger(logPath)));
         Microsoft.Extensions.Logging.ILogger logger = loggerFactory.CreateLogger<Serilog.ILogger>();
         
         logger.LogInformation("Starting Tune Transporter...");
+
+        if (string.IsNullOrEmpty(downloadsPath) || string.IsNullOrEmpty(musicPath))
+        {
+            logger.LogWarning("DOWNLOADS_PATH or MUSIC_PATH environment variables are not set. Exiting.");
+            Environment.Exit(1);
+        }
+        
+        logger.LogInformation("LOG_PATH: {LogPath}", logPath);
+        logger.LogInformation("DOWNLOADS_PATH: {DownloadsPath}", downloadsPath);
+        logger.LogInformation("MUSIC_PATH: {MusicPath}", musicPath);
         
         Event? eventData = null;
         
-        var stdin = ReadFromStdin(logger, 10000);
+        var stdin = ReadFromStdin(logger);
 
         if (string.IsNullOrEmpty(stdin))
         {
@@ -59,7 +84,7 @@ public static class Program
             
         var directoryName = eventData.Name;
 
-        var directoryPath = Path.Combine(DownloadsPath, directoryName);
+        var directoryPath = Path.Combine(downloadsPath, directoryName);
         
         if (!Directory.Exists(directoryPath))
         {
@@ -90,7 +115,7 @@ public static class Program
             Environment.Exit(1);
         }
         
-        var pathHelper = new PathHelper(MusicPath);
+        var pathHelper = new PathHelper(musicPath);
         
         var fileTransfers = new List<FileTransfer>();
 
@@ -183,12 +208,12 @@ public static class Program
         return input.ToString();
     }
 
-    private static Serilog.ILogger NewLogger()
+    private static Serilog.ILogger NewLogger(string path)
     {
         return new LoggerConfiguration()
             .MinimumLevel.Debug()
             .WriteTo.Console()
-            .WriteTo.File("/home/thomas/slskd_integrations/logs/tune_transporter.log", rollingInterval: RollingInterval.Day)
+            .WriteTo.File(path, rollingInterval: RollingInterval.Day)
             .CreateLogger();
     }
 }
