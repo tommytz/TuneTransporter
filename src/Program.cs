@@ -2,6 +2,7 @@
 
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Serilog;
 using Slskd;
 
@@ -22,13 +23,10 @@ public static class Program
 
     public static void Main()
     {
-        var logger = new LoggerConfiguration()
-            .MinimumLevel.Debug()
-            .WriteTo.Console()
-            .WriteTo.File("/home/thomas/slskd_integrations/logs/tune_transporter.log", rollingInterval: RollingInterval.Day)
-            .CreateLogger();
+        using ILoggerFactory loggerFactory = LoggerFactory.Create(builder => builder.AddSerilog(NewLogger()));
+        Microsoft.Extensions.Logging.ILogger logger = loggerFactory.CreateLogger<Serilog.ILogger>();
         
-        logger.Information("Starting Tune Transporter...");
+        logger.LogInformation("Starting Tune Transporter...");
         
         Event? eventData = null;
         
@@ -36,26 +34,26 @@ public static class Program
 
         if (string.IsNullOrEmpty(stdin))
         {
-            logger.Warning("No arguments provided. Exiting.");
+            logger.LogWarning("No arguments provided. Exiting.");
             Environment.Exit(1);
         }
         
         try
         {
             var json = stdin;
-            logger.Information("Read event from stdin: {Json}", json);
+            logger.LogInformation("Read event from stdin: {Json}", json);
             
             eventData = JsonSerializer.Deserialize<Event>(json);
-            logger.Information("Parsed event from JSON: {Event}", eventData);
+            logger.LogInformation("Parsed event from JSON: {Event}", eventData);
         }
         catch (Exception e)
         {
-            logger.Error(e, "Error parsing event from stdin");
+            logger.LogError(e, "Error parsing event from stdin");
         }
             
         if (eventData == null)
         {
-            logger.Warning("Event data is null. It may have been empty or not in the expected format.");
+            logger.LogWarning("Event data is null. It may have been empty or not in the expected format.");
             Environment.Exit(1);
         }
             
@@ -65,7 +63,7 @@ public static class Program
         
         if (!Directory.Exists(directoryPath))
         {
-            logger.Warning("Directory does not exist: {DirectoryPath}", directoryPath);
+            logger.LogWarning("Directory does not exist: {DirectoryPath}", directoryPath);
             Environment.Exit(1);
         }
         
@@ -82,13 +80,13 @@ public static class Program
         }
         catch (Exception e)
         {
-            logger.Error(e, "Error parsing metadata from audio files");
+            logger.LogError(e, "Error parsing metadata from audio files");
             Environment.Exit(1);
         }
 
         if (!trackList.Any())
         {
-            logger.Warning("No audio files found in directory: {DirectoryPath}", directoryPath);
+            logger.LogWarning("No audio files found in directory: {DirectoryPath}", directoryPath);
             Environment.Exit(1);
         }
         
@@ -113,17 +111,17 @@ public static class Program
         // Cleanup the directory left behind if the files have moved
         if (transferResult)
         {
-            logger.Information("File transfer successful. Cleaning up directory...");
+            logger.LogInformation("File transfer successful. Cleaning up directory...");
             directoryService.CleanUp(directoryPath);
         }
         else
         {
-            logger.Warning("File transfer failed.");
+            logger.LogWarning("File transfer failed.");
             Environment.Exit(1);
         }
     }
     
-    private static string ReadFromStdin(ILogger logger, int timeoutMilliseconds = 5000)
+    private static string ReadFromStdin(Microsoft.Extensions.Logging.ILogger logger, int timeoutMilliseconds = 5000)
     {
         var input = new StringBuilder();
         var cts = new CancellationTokenSource();
@@ -145,14 +143,14 @@ public static class Program
                         // If "exit" is encountered, stop reading
                         if (line.Equals("exit", StringComparison.OrdinalIgnoreCase))
                         {
-                            logger.Information("Received 'exit' signal, terminating stdin reading");
+                            logger.LogInformation("Received 'exit' signal, terminating stdin reading");
                             break;
                         }
 
                         line = line.Trim();
                         if (string.IsNullOrEmpty(line))
                         {
-                            logger.Debug("Skipped empty line from stdin");
+                            logger.LogDebug("Skipped empty line from stdin");
                             continue;
                         }
 
@@ -162,7 +160,7 @@ public static class Program
             }
             catch (Exception ex)
             {
-                logger.Error(ex, "Error while reading from stdin");
+                logger.LogError(ex, "Error while reading from stdin");
                 throw; // Handle any read error
             }
         });
@@ -173,7 +171,7 @@ public static class Program
         if (completedTask == timeoutTask)
         {
             // Timeout occurred before any input was received
-            logger.Warning("Timeout reached while waiting for input.");
+            logger.LogWarning("Timeout reached while waiting for input.");
             return string.Empty; // Or handle timeout as necessary (e.g., throw exception or return a default value)
         }
 
@@ -181,7 +179,16 @@ public static class Program
         readTask.Wait();
 
         // Return the collected input
-        logger.Information("Successfully read input from stdin, length: {Length} characters", input.Length);
+        logger.LogInformation("Successfully read input from stdin, length: {Length} characters", input.Length);
         return input.ToString();
+    }
+
+    private static Serilog.ILogger NewLogger()
+    {
+        return new LoggerConfiguration()
+            .MinimumLevel.Debug()
+            .WriteTo.Console()
+            .WriteTo.File("/home/thomas/slskd_integrations/logs/tune_transporter.log", rollingInterval: RollingInterval.Day)
+            .CreateLogger();
     }
 }
