@@ -1,6 +1,8 @@
 namespace TuneTransporter;
 
-public class DirectoryService(IPathHelper pathHelper, string[] extensions)
+using Serilog;
+
+public class DirectoryService(ILogger logger, IPathHelper pathHelper, string[] extensions)
 {
     public bool MoveFiles(IEnumerable<FileTransfer> fileTransfers)
     {
@@ -13,21 +15,21 @@ public class DirectoryService(IPathHelper pathHelper, string[] extensions)
             // Check file to transfer does exist
             if (!File.Exists(transfer.PreviousPath))
             {
-                Console.WriteLine("File does not exist.");
+                logger.Warning("File does not exist.");
                 break;
             }
 
             // Check current path and target path are not the same
             if (transfer.PreviousPath == targetPath)
             {
-                Console.WriteLine("Source and destination are the same.");
+                logger.Warning("Source and destination are the same.");
                 break;
             }
 
             // Check there isn't already a file at that location
             if (File.Exists(targetPath))
             {
-                Console.WriteLine("File already exists at destination.");
+                logger.Warning("File already exists at destination.");
                 break;
             }
             
@@ -49,7 +51,7 @@ public class DirectoryService(IPathHelper pathHelper, string[] extensions)
             
             // Move file to new location
             File.Move(transfer.PreviousPath, targetPath);
-            Console.WriteLine("\"{0}\" moved to \"{1}\"", transfer.PreviousPath, targetPath);
+            logger.Warning("\"{TranferPreviousPath}\" moved to \"{TargetPath}\"", transfer.PreviousPath, targetPath);
         }
 
         return true;
@@ -66,7 +68,7 @@ public class DirectoryService(IPathHelper pathHelper, string[] extensions)
 
         if (files.Any(f => extensions.Contains(Path.GetExtension(f))))
         {
-            Console.WriteLine("Cleanup aborted! There are still audio files in the directory.");
+            logger.Warning("Cleanup aborted! There are still audio files in the directory.");
         }
         
         Directory.Delete(directoryPath, true);

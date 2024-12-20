@@ -5,6 +5,15 @@ using System.Text.Json;
 using Serilog;
 using Slskd;
 
+// TODO: Make the stdinput stream reading more robust
+//  - Add a timeout so that it doesn't hang forever and can exit if waiting for too long
+//  - Maybe put the stream reading and the json deserialization together in some way so they're out of Main
+//  - That way the Main program only cares about the output (the slskd event object)
+
+// TODO: Read environment variables into configuration instead of from a config file
+//  - This allows the slskd container to use env vars in the docker compose for the downloads and music path
+//  - Also allows it to be different outside of the container
+
 public static class Program
 {
     private const string DownloadsPath = "/home/thomas/.local/share/slskd/downloads";
@@ -13,40 +22,40 @@ public static class Program
 
     public static void Main()
     {
-        Log.Logger = new LoggerConfiguration()
+        var logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
             .WriteTo.Console()
             .WriteTo.File("/home/thomas/slskd_integrations/logs/tune_transporter.log", rollingInterval: RollingInterval.Day)
             .CreateLogger();
         
-        Log.Information("Starting Tune Transporter...");
+        logger.Information("Starting Tune Transporter...");
         
         Event? eventData = null;
         
-        var stdin = ReadFromStdin();
+        var stdin = ReadFromStdin(logger, 10000);
 
         if (string.IsNullOrEmpty(stdin))
         {
-            Log.Warning("No arguments provided. Exiting.");
+            logger.Warning("No arguments provided. Exiting.");
             Environment.Exit(1);
         }
         
         try
         {
             var json = stdin;
-            Log.Information("Read event from stdin: {Json}", json);
+            logger.Information("Read event from stdin: {Json}", json);
             
             eventData = JsonSerializer.Deserialize<Event>(json);
-            Log.Information("Parsed event from JSON: {Event}", eventData);
+            logger.Information("Parsed event from JSON: {Event}", eventData);
         }
         catch (Exception e)
         {
-            Log.Error(e, "Error parsing event from stdin");
+            logger.Error(e, "Error parsing event from stdin");
         }
             
         if (eventData == null)
         {
-            Log.Warning("Event data is null. It may have been empty or not in the expected format.");
+            logger.Warning("Event data is null. It may have been empty or not in the expected format.");
             Environment.Exit(1);
         }
             
@@ -56,7 +65,7 @@ public static class Program
         
         if (!Directory.Exists(directoryPath))
         {
-            Log.Warning("Directory does not exist: {DirectoryPath}", directoryPath);
+            logger.Warning("Directory does not exist: {DirectoryPath}", directoryPath);
             Environment.Exit(1);
         }
         
@@ -73,13 +82,13 @@ public static class Program
         }
         catch (Exception e)
         {
-            Log.Error(e, "Error parsing metadata from audio files");
+            logger.Error(e, "Error parsing metadata from audio files");
             Environment.Exit(1);
         }
 
         if (!trackList.Any())
         {
-            Log.Warning("No audio files found in directory: {DirectoryPath}", directoryPath);
+            logger.Warning("No audio files found in directory: {DirectoryPath}", directoryPath);
             Environment.Exit(1);
         }
         
@@ -97,66 +106,82 @@ public static class Program
         }
         
         // Attempt to transfer files, and bail out if anything isn't right
-        var directoryService = new DirectoryService(pathHelper, FileExtensions);
+        var directoryService = new DirectoryService(logger, pathHelper, FileExtensions);
         
         var transferResult = directoryService.MoveFiles(fileTransfers);
         
         // Cleanup the directory left behind if the files have moved
         if (transferResult)
         {
-            Log.Information("File transfer successful. Cleaning up directory...");
+            logger.Information("File transfer successful. Cleaning up directory...");
             directoryService.CleanUp(directoryPath);
         }
         else
         {
-            Log.Warning("File transfer failed.");
+            logger.Warning("File transfer failed.");
             Environment.Exit(1);
         }
     }
-
-    private static string ReadFromStdin()
+    
+    private static string ReadFromStdin(ILogger logger, int timeoutMilliseconds = 5000)
     {
         var input = new StringBuilder();
+        var cts = new CancellationTokenSource();
+        var token = cts.Token;
 
-        try
+        // Task to handle the timeout
+        var timeoutTask = Task.Delay(timeoutMilliseconds, token);
+
+        // Task to read from stdin
+        var readTask = Task.Run(() =>
         {
-            using (var sr = new StreamReader(Console.OpenStandardInput()))
+            try
             {
-                string line;
-                while ((line = sr.ReadLine()) != null)  // Read input line by line until EOF
+                using (var sr = new StreamReader(Console.OpenStandardInput()))
                 {
-                    // Trim any leading/trailing whitespace to avoid accidental empty lines
-                    line = line.Trim();
-
-                    // Skip empty lines or lines that only contain whitespace
-                    if (string.IsNullOrEmpty(line)) { continue; }
-
-                    // If the line is "exit", stop reading but don't append it to input
-                    if (line.Equals("exit", StringComparison.OrdinalIgnoreCase))
+                    string line;
+                    while ((line = sr.ReadLine()) != null)
                     {
-                        Log.Information("Received 'exit' signal, terminating stdin reading");
-                        break;  // Stop reading, but don't append "exit" to the result
-                    }
+                        // If "exit" is encountered, stop reading
+                        if (line.Equals("exit", StringComparison.OrdinalIgnoreCase))
+                        {
+                            logger.Information("Received 'exit' signal, terminating stdin reading");
+                            break;
+                        }
 
-                    // Append valid input to our StringBuilder
-                    input.AppendLine(line);
+                        line = line.Trim();
+                        if (string.IsNullOrEmpty(line))
+                        {
+                            logger.Debug("Skipped empty line from stdin");
+                            continue;
+                        }
+
+                        input.AppendLine(line);
+                    }
                 }
             }
+            catch (Exception ex)
+            {
+                logger.Error(ex, "Error while reading from stdin");
+                throw; // Handle any read error
+            }
+        });
 
-            // Return the complete input as a single string
-            Log.Information("Successfully read input from stdin, length: {Length} characters", input.Length);
+        // Wait for either the timeout or stdin input to complete
+        var completedTask = Task.WhenAny(readTask, timeoutTask).Result;
 
-            return input.ToString();
-        }
-        catch (IOException ioEx)
+        if (completedTask == timeoutTask)
         {
-            Log.Error(ioEx, "IOException while reading from stdin");
-            throw;  // Re-throw or handle as necessary
+            // Timeout occurred before any input was received
+            logger.Warning("Timeout reached while waiting for input.");
+            return string.Empty; // Or handle timeout as necessary (e.g., throw exception or return a default value)
         }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Unexpected error while reading from stdin");
-            throw;  // Re-throw or handle as necessary
-        }
+
+        // Wait for the read task to complete if the timeout was not triggered
+        readTask.Wait();
+
+        // Return the collected input
+        logger.Information("Successfully read input from stdin, length: {Length} characters", input.Length);
+        return input.ToString();
     }
 }
