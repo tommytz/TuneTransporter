@@ -1,64 +1,89 @@
 ﻿namespace TuneTransporter;
 
-using Microsoft.Extensions.Configuration;
-using DirectorySelector;
+using System.Text;
+using System.Text.Json;
+using Serilog;
+using Slskd;
 
 public static class Program
 {
-    public static void Main(string[] args)
+    private const string DownloadsPath = "/home/thomas/.local/share/slskd/downloads";
+    private const string MusicPath = "/home/thomas/.local/share/slskd/music";
+    private static readonly string[] FileExtensions = [".flac", ".wav", ".mp3", ".m4a"];
+
+    public static void Main()
     {
-        // Read config values into memory. Consider using IOptions if it makes sense?
-        // Read environment variables if they are provided?
-        // env vars > config
-        IConfiguration config = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build();
+        Log.Logger = new LoggerConfiguration()
+            .MinimumLevel.Debug()
+            .WriteTo.Console()
+            .WriteTo.File("/home/thomas/slskd_integrations/logs/tune_transporter.log", rollingInterval: RollingInterval.Day)
+            .CreateLogger();
         
-        // e.g. [".flac", ".wav"]
-        var audioFileTypes = config.GetSection("audioFileTypes").Get<string[]>();
-        if (audioFileTypes == null || audioFileTypes.Length == 0)
-        {
-            throw new Exception("Audio file types not set");
-        }
+        Log.Information("Starting Tune Transporter...");
+        
+        Event? eventData = null;
+        
+        var stdin = ReadFromStdin();
 
-        var downloadsPath = config.GetValue<string>("downloadsPath");
-        var musicPath = config.GetValue<string>("musicPath");
-
-        if (string.IsNullOrEmpty(downloadsPath) || string.IsNullOrEmpty(musicPath))
+        if (string.IsNullOrEmpty(stdin))
         {
-            throw new Exception("Downloads path or music path not set");
+            Log.Warning("No arguments provided. Exiting.");
+            Environment.Exit(1);
         }
         
-        // Read event JSON or start interactive CLI session
-        var directorySelector = new DirectorySelectorFactory(args, downloadsPath).Create();
-        var directoryPath = directorySelector.GetTargetDirectory();
+        try
+        {
+            var json = stdin;
+            Log.Information("Read event from stdin: {Json}", json);
+            
+            eventData = JsonSerializer.Deserialize<Event>(json);
+            Log.Information("Parsed event from JSON: {Event}", eventData);
+        }
+        catch (Exception e)
+        {
+            Log.Error(e, "Error parsing event from stdin");
+        }
+            
+        if (eventData == null)
+        {
+            Log.Warning("Event data is null. It may have been empty or not in the expected format.");
+            Environment.Exit(1);
+        }
+            
+        var directoryName = eventData.Name;
+
+        var directoryPath = Path.Combine(DownloadsPath, directoryName);
         
-        // Scan album directory files
-        // Add a check here that directory path does actually exist since the files could have been moved before the event was processed
-        // Add a check here that there are any audio files/any files at all before moving to renaming, etc
-        // Get metadata of all the audio files and prepare them for file transfer
+        if (!Directory.Exists(directoryPath))
+        {
+            Log.Warning("Directory does not exist: {DirectoryPath}", directoryPath);
+            Environment.Exit(1);
+        }
+        
         List<string> filePaths = Directory.EnumerateFiles(directoryPath).ToList();
         IList<TrackInfo> trackList = new List<TrackInfo>();
         
         try
         {
             trackList = filePaths
-                .Where(f => audioFileTypes.Contains(Path.GetExtension(f)))
+                .Where(f => FileExtensions.Contains(Path.GetExtension(f)))
                 .Select(f => new TrackInfo(f))
                 .OrderBy(t => t.Track)
                 .ToList();
         }
         catch (Exception e)
         {
-            Console.Error.WriteLine("Unable to parse metadata from audio files: {0}", e.Message);
+            Log.Error(e, "Error parsing metadata from audio files");
             Environment.Exit(1);
         }
 
         if (!trackList.Any())
         {
-            Console.Error.WriteLine("No audio files found in directory");
+            Log.Warning("No audio files found in directory: {DirectoryPath}", directoryPath);
             Environment.Exit(1);
         }
         
-        var pathHelper = new PathHelper(musicPath);
+        var pathHelper = new PathHelper(MusicPath);
         
         var fileTransfers = new List<FileTransfer>();
 
@@ -72,20 +97,66 @@ public static class Program
         }
         
         // Attempt to transfer files, and bail out if anything isn't right
-        var directoryService = new DirectoryService(pathHelper, audioFileTypes);
+        var directoryService = new DirectoryService(pathHelper, FileExtensions);
         
         var transferResult = directoryService.MoveFiles(fileTransfers);
         
         // Cleanup the directory left behind if the files have moved
         if (transferResult)
         {
-            Console.WriteLine("Files transferred successfully. Cleaning up directory...");
+            Log.Information("File transfer successful. Cleaning up directory...");
             directoryService.CleanUp(directoryPath);
         }
         else
         {
-            Console.WriteLine("File transfer failed.");
+            Log.Warning("File transfer failed.");
             Environment.Exit(1);
+        }
+    }
+
+    private static string ReadFromStdin()
+    {
+        var input = new StringBuilder();
+
+        try
+        {
+            using (var sr = new StreamReader(Console.OpenStandardInput()))
+            {
+                string line;
+                while ((line = sr.ReadLine()) != null)  // Read input line by line until EOF
+                {
+                    // Trim any leading/trailing whitespace to avoid accidental empty lines
+                    line = line.Trim();
+
+                    // Skip empty lines or lines that only contain whitespace
+                    if (string.IsNullOrEmpty(line)) { continue; }
+
+                    // If the line is "exit", stop reading but don't append it to input
+                    if (line.Equals("exit", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Log.Information("Received 'exit' signal, terminating stdin reading");
+                        break;  // Stop reading, but don't append "exit" to the result
+                    }
+
+                    // Append valid input to our StringBuilder
+                    input.AppendLine(line);
+                }
+            }
+
+            // Return the complete input as a single string
+            Log.Information("Successfully read input from stdin, length: {Length} characters", input.Length);
+
+            return input.ToString();
+        }
+        catch (IOException ioEx)
+        {
+            Log.Error(ioEx, "IOException while reading from stdin");
+            throw;  // Re-throw or handle as necessary
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Unexpected error while reading from stdin");
+            throw;  // Re-throw or handle as necessary
         }
     }
 }

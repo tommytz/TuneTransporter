@@ -26,4 +26,6 @@ public class Event
     public required DateTime Timestamp { get; set; }
     
     public string Name => Path.GetFileName(LocalDirectoryName);
+    
+    public override string ToString() => $"{Type}: {Name}";
 }
