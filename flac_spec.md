@@ -5,8 +5,9 @@ any number of other metadata blocks, and then the audio frames.
 
 e.g.
 
+```
 00000000  66 4c 61 43 00 00 00 22  10 00 10 00 00 00 10 00  |fLaC..."........|
-
+```
 
 # Metadata block header
 Each metadata block starts with a 4-byte header.
