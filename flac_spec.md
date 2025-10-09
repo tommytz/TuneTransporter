@@ -149,10 +149,36 @@ After that, the last part of our streaminfo block is 128 bits for the MD5 checks
 Our checksum is `0x30159043deeafcf5c02b1f0b16e5df2e`, which is a huge 1,194,569,653,176,821,203,984,174.
 I am not going to attempt to do the MD5 checksum with the MD5 message-digest algorithm.
 
+With all that data we can make a nice summary table (credit to ChatGPT here)
+
+| **Field** | **Bits** | **Raw Value** | **Decoded Value** | **Description** |
+|------------|-----------|----------------|--------------------|------------------|
+| Minimum block size | 16 | `0x1000` | **4096 samples** | Minimum block size used in the stream |
+| Maximum block size | 16 | `0x1000` | **4096 samples** | Maximum block size used in the stream |
+| Minimum frame size | 24 | `0x000010` | **16 bytes** | Smallest frame size in the stream |
+| Maximum frame size | 24 | `0x003931` | **14,641 bytes** | Largest frame size in the stream |
+| Sample rate | 20 | `0x0AC44` | **44,100 Hz** | Audio sampling rate |
+| Number of channels | 3 | `0b001` → (1 + 1) | **2 channels (stereo)** | Stored as `(channels − 1)` |
+| Bits per sample | 5 | `0b01111` → (15 + 1) | **16 bits per sample** | Stored as `(bits − 1)` |
+| Total samples | 36 | `0x000B4909C` | **11,833,500 samples** | Total number of interchannel samples |
+| MD5 checksum | 128 | `0x30159043DEEACFF5C02B1F0B16E5DF2E` | *(binary fingerprint of audio data)* | MD5 of unencoded audio data |
+
+---
+
+#### Additional Context
+
+- **Block size:** Since both the minimum and maximum are 4096, each FLAC block (except possibly the last) contains 4096 samples per channel.  
+- **Sample rate:** 44.1 kHz, the standard CD-quality rate.  
+- **Channels:** Stereo (Left + Right).  
+- **Bits per sample:** 16-bit PCM precision.  
+- **Total samples:** 11,833,500 samples per channel — approximately **268 seconds (≈ 4 minutes 28 seconds)** of audio.  
+  - Calculation: `11,833,500 / 44,100 ≈ 268.2 s`  
+- **MD5 checksum:** Used by decoders to verify that the decoded audio exactly matches the original PCM data.
+
 ### The seek table metadata block
 I'm not going to cover how this works here. We're simply going to skip over it.
 
-After 34 bytes, the next metadata header is `0x030001e6`. The first byte is `0x03`.
+After 34 bytes (the streaminfo block), the next metadata header is `0x030001e6`. The first byte is `0x03`.
 
 The first bit is `0`, so there are more metadata blocks to follow.
 The remaining 7 bits are `0b0000011`, which is 3 - so this is a Seek table.
