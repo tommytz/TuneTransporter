@@ -243,5 +243,39 @@ The next 23 bytes are: `0x414c42554d3d416d65726963616e20466f6f7462616c6c`
 This translates in ASCII to the field `"ALBUM=American Football"`.
 
 ## What next?
-We can continue to do this for all the fields, and then keep reading metadata blocks until we get to one where the header says it's the last.
+We can continue to do this for all the fields:
+
+`ALBUM=American Football`
+`ALBUMARTIST=American Football`
+`ARTIST=American Football`
+`COMMENT=Visit http://americanfootball.bandcamp.com`
+`DATE=1999-09-14`
+`GENRE=Alternative Rock`
+`GENRE=Emo`
+`GENRE=Rock`
+`ISRC=US3R49900010`
+`TITLE=Never Meant`
+`ORIGINALDATE=1999-09-14`
+`TRACKTOTAL=9`
+`DISCNUMBER=1`
+`DISCTOTAL=1`
+`ORIGINALYEAR=1999`
+`RELEASECOUNTRY=US`
+`MUSICBRAINZ_ALBUMSTATUS=official`
+`MUSICBRAINZ_ALBUMTYPE=album`
+`MUSICBRAINZ_ALBUMID=3f41825e-5e12-477f-a0f8-76a0a90862979`
+`MUSICBRAINZ_ARTISTID=4ebb5ad3-9018-407d-8c24-c03011ab9ac6`
+`MUSICBRAINZ_ALBUMARTISTID=4ebb5ad3-9018-407d-8c24-c03011ab9ac6`
+`MUSICBRAINZ_RELEASEGROUPID=8e40a68c-58e8-3c92-a763-645fda2ce8a78`
+`MUSICBRAINZ_TRACKID=d789d2e1-317f-4bd9-aa4e-e20e81d62bde`
+`TOTALTRACKS=9`
+`TRACKNUMBER=1`
+`TOTALDISCS=1`
+`MEDIA=CD`
+`LABEL=Polyvinyl`
+`MUSICBRAINZ_RELEASETRACKID=222ad733-8d94-38c1-9573-d5b0240a31b6`
+`RELEASESTATUS=official`
+`RELEASETYPE=album`
+
+And then keep reading metadata blocks until we get to one where the header says it's the last. However, we don't really need to know anything after the vorbis comment.
 
