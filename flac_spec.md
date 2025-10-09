@@ -1,7 +1,7 @@
 # A practical walkthrough of reading FLAC metadata
 For further reference see [RFC 9639](https://datatracker.ietf.org/doc/rfc9639/).
 This guide uses a hexdump of the American Football song Never Meant from their debut self-titled.
-The hexdump is piped into a pager like less so it can be easily read.
+The hexdump is piped into a pager like `less` so it can be easily read.
 
 ```
 hexdump -C "01 - Never Meant.flac" | less
@@ -24,13 +24,11 @@ A FLAC bitstream consists of the fLaC (i.e., `0x664C6143`) marker at the beginni
 followed by a mandatory metadata block (called the streaminfo metadata block),
 any number of other metadata blocks, and then the audio frames.
 
-e.g.
-
 ```
 00000000  66 4c 61 43 00 00 00 22  10 00 10 00 00 00 10 00  |fLaC..."........|
 ```
 
-# Metadata block header
+## Metadata block header
 Each metadata block starts with a 4-byte header.
 
 The first bit in this header flags whether a metadata block is the last one.
@@ -63,8 +61,7 @@ excluding the 4 header bytes, as an unsigned number coded big-endian.
 
 The only metadata types we care about for tag metadata are the Streaminfo (since it comes first) and the Vorbis comment (where the tags are).
 
-e.g.
-
+### Looking at our file
 For the first metadata header, `0x00000022`, the first byte is `0x00`, which is `0b00000000`.
 
 The first bit of this is `0`, which tells us that there are more metadata blocks to follow.
@@ -78,9 +75,10 @@ The first bit is `0`, so there are more metadata blocks to follow.
 The remaining 7 bits are `0b0000011`, which is 3 - so this is a Seek table.
 
 The remaining 3 bytes are `0x0001e6`, which is 486 - the size of the block...
-We know that:
-fLaC header + Streaminfo header + 34 + Seek table header
+```
+fLaC header + Streaminfo header + 34 bytes + Seek table header
 4 + 4 + 34 + 4 = 34 + 12 = 46
+```
 So our next metadata header will be 46 + 486 = 532.
 
 ```
@@ -90,13 +88,13 @@ So our next metadata header will be 46 + 486 = 532.
 At 532 we have `0x040003dc`, the first byte is `0x04`, so we know there's more metadata, and that this is a Vorbis comment!
 Furthermore, the remaining 3 bytes are `0x0003dc`, so the Vorbis comment block is 988 bytes long!
 
-# The Vorbis Comment
+## The Vorbis Comment
 A Vorbis comment metadata block contains human-readable information coded in UTF-8 (which is just ASCII).
 
 A Vorbis comment metadata block consists of a vendor string optionally followed by a number of fields,
 which are pairs of field names and field contents (the metadata tags that we care about).
 
-## Vendor string
+### Vendor string
 The metadata block header is directly followed by 4 bytes containing the length in bytes of the vendor string
 as an unsigned number coded little-endian. The vendor string follows, is UTF-8 coded and is not terminated in any way.
 
@@ -111,7 +109,7 @@ The 4 bytes are `0x20000000`, which is `0x00000020` in little-endian, and 32 in 
 The next 32 bytes give us: `0x7265666572656e6365206c6962464c414320312e332e30203230313330353236`
 This translates in ASCII to the vendor string `"reference libFLAC 1.3.0 20130526"`!
 
-## Fields
+### Fields
 Immediately following the vendor string a 4 bytes containing the number of fields that are stored in the Vorbis comment block,
 stored as an unsigned number coded little-endian. If this number is non-zero, it is followed by the fields themselves.
 
@@ -135,5 +133,6 @@ The next 23 bytes are: `0x414c42554d3d416d65726963616e20466f6f7462616c6c`
 
 This translates in ASCII to the field `"ALBUM=American Football"`.
 
+## What next?
 We can continue to do this for all the fields, and then keep reading metadata blocks until we get to one where the header says it's the last.
 
