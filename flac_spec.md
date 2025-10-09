@@ -1,4 +1,25 @@
-# Format layout
+# A practical walkthrough of reading FLAC metadata
+For further reference see [RFC 9639](https://datatracker.ietf.org/doc/rfc9639/).
+This guide uses a hexdump of the American Football song Never Meant from their debut self-titled.
+The hexdump is piped into a pager like less so it can be easily read.
+
+```
+hexdump -C "01 - Never Meant.flac" | less
+```
+
+This outputs the file in hexadeimcal, with a UTF-8/ASCII (unsure which) gutter on the right.
+
+```
+00000000  66 4c 61 43 00 00 00 22  10 00 10 00 00 00 10 00  |fLaC..."........|
+00000010  39 31 0a c4 42 f0 00 b4  90 9c 30 15 90 43 de ea  |91..B.....0..C..|
+00000020  fc f5 c0 2b 1f 0b 16 e5  df 2e 03 00 01 e6 00 00  |...+............|
+00000030  00 00 00 00 00 00 00 00  00 00 00 00 00 00 10 00  |................|
+00000040  00 00 00 00 00 06 b0 00  00 00 00 00 00 0d c1 86  |................|
+00000050  10 00 00 00 00 00 00 0d  70 00 00 00 00 00 00 1f  |........p.......|
+...
+```
+
+## Format layout
 A FLAC bitstream consists of the fLaC (i.e., `0x664C6143`) marker at the beginning of the stream,
 followed by a mandatory metadata block (called the streaminfo metadata block),
 any number of other metadata blocks, and then the audio frames.
