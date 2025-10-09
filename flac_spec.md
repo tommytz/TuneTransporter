@@ -63,18 +63,101 @@ The only metadata types we care about for tag metadata are the Streaminfo (since
 
 ### Looking at our file
 For the first metadata header, `0x00000022`, the first byte is `0x00`, which is `0b00000000`.
-
 The first bit of this is `0`, which tells us that there are more metadata blocks to follow.
-The 7 remaining bits are `0b0000000`, which is just 0 - which tells us this is a Streaminfo metadata block.
 
+```
+00000000  66 4c 61 43 00 00 00 22  10 00 10 00 00 00 10 00  |fLaC..."........|
+```
+
+The 7 remaining bits are `0b0000000`, which is just 0 - which tells us this is a Streaminfo metadata block.
 The remaining 3 bytes are `0x000022`, which is 34 - so we know the rest of the metadata block is 34 bytes long.
+
+### The Streaminfo metadata block
+The streaminfo block must be present as the first metadata block in the stream.
+
+The streaminfo metadata is described by the following table
+
+```
+       +========+=================================================+
+       | Data   | Description                                     |
+       +========+=================================================+
+       | u(16)  | The minimum block size (in samples) used in the |
+       |        | stream, excluding the last block.               |
+       +--------+-------------------------------------------------+
+       | u(16)  | The maximum block size (in samples) used in the |
+       |        | stream.                                         |
+       +--------+-------------------------------------------------+
+       | u(24)  | The minimum frame size (in bytes) used in the   |
+       |        | stream.  A value of 0 signifies that the value  |
+       |        | is not known.                                   |
+       +--------+-------------------------------------------------+
+       | u(24)  | The maximum frame size (in bytes) used in the   |
+       |        | stream.  A value of 0 signifies that the value  |
+       |        | is not known.                                   |
+       +--------+-------------------------------------------------+
+       | u(20)  | Sample rate in Hz.                              |
+       +--------+-------------------------------------------------+
+       | u(3)   | (number of channels)-1.  FLAC supports from 1   |
+       |        | to 8 channels.                                  |
+       +--------+-------------------------------------------------+
+       | u(5)   | (bits per sample)-1.  FLAC supports from 4 to   |
+       |        | 32 bits per sample.                             |
+       +--------+-------------------------------------------------+
+       | u(36)  | Total number of interchannel samples in the     |
+       |        | stream.  A value of 0 here means the number of  |
+       |        | total samples is unknown.                       |
+       +--------+-------------------------------------------------+
+       | u(128) | MD5 checksum of the unencoded audio data.  This |
+       |        | allows the decoder to determine if an error     |
+       |        | exists in the audio data even when, despite the |
+       |        | error, the bitstream itself is valid.  A value  |
+       |        | of 0 signifies that the value is not known.     |
+       +--------+-------------------------------------------------+
+```
+
+Here is our 34 bytes:
+
+```
+00000000  66 4c 61 43 00 00 00 22  10 00 10 00 00 00 10 00  |fLaC..."........|
+00000010  39 31 0a c4 42 f0 00 b4  90 9c 30 15 90 43 de ea  |91..B.....0..C..|
+00000020  fc f5 c0 2b 1f 0b 16 e5  df 2e 03 00 01 e6 00 00  |...+............|
+```
+
+The first 16 bits are the minimum block size: `0x1000`.
+The next 16 bits are the maximum block size: `0x1000`.
+In this case they are the same, the minimum and maximum block size (in samples) used in the stream is 4096.
+
+The next 24 bits are the minimum frame size: `0x000010`, which is 16 bytes.
+The next 24 bits are the maximum frame size: `0x003931`, which is 14,641 bytes.
+
+The next 20 bits are the sample rate in Hz: `0x0ac44`, which is 44,100 Hz.
+
+The next 3 bits are the number of channels, and the 5 after that are the bits per sample.
+This is awkward in hexadecimal since each hex code is 4 bits, so we'll take the full 8 bits first: `0x2f`.
+The binary number is `0b00101111`, which we'll split into `0b001` and `0b01111`. These are 1 and 15, respectively.
+According to the table, both of these are offset by 1, so there are 2 channels and 16 bits per sample.
+
+The next 36 bits are the total number of interchannel samples in the stream: `0x000b4909c`, which in our case is a whopping 11,833,500.
+
+After that, the last part of our streaminfo block is 128 bits for the MD5 checksum of the unencoded audio data.
+
+```
+00000010  39 31 0a c4 42 f0 00 b4  90 9c 30 15 90 43 de ea  |91..B.....0..C..|
+00000020  fc f5 c0 2b 1f 0b 16 e5  df 2e 03 00 01 e6 00 00  |...+............|
+```
+
+Our checksum is `0x30159043deeafcf5c02b1f0b16e5df2e`, which is a huge 1,194,569,653,176,821,203,984,174.
+I am not going to attempt to do the MD5 checksum with the MD5 message-digest algorithm.
+
+### The seek table metadata block
+I'm not going to cover how this works here. We're simply going to skip over it.
 
 After 34 bytes, the next metadata header is `0x030001e6`. The first byte is `0x03`.
 
 The first bit is `0`, so there are more metadata blocks to follow.
 The remaining 7 bits are `0b0000011`, which is 3 - so this is a Seek table.
-
 The remaining 3 bytes are `0x0001e6`, which is 486 - the size of the block...
+
 ```
 fLaC header + Streaminfo header + 34 bytes + Seek table header
 4 + 4 + 34 + 4 = 34 + 12 = 46
@@ -88,7 +171,7 @@ So our next metadata header will be 46 + 486 = 532.
 At 532 we have `0x040003dc`, the first byte is `0x04`, so we know there's more metadata, and that this is a Vorbis comment!
 Furthermore, the remaining 3 bytes are `0x0003dc`, so the Vorbis comment block is 988 bytes long!
 
-## The Vorbis Comment
+### The Vorbis Comment metadata block
 A Vorbis comment metadata block contains human-readable information coded in UTF-8 (which is just ASCII).
 
 A Vorbis comment metadata block consists of a vendor string optionally followed by a number of fields,
