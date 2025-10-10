@@ -3,9 +3,11 @@ package main
 import (
 	"fmt"
 	"os"
+	"io"
+	"encoding/binary"
 )
 
-const FlacMarker = 0x664C6143
+const FlacMarker uint32 = 0x664C6143
 
 func check(e error) {
 	if e != nil {
@@ -21,7 +23,17 @@ func main () {
 	file, err := os.Open(filename)
 	check(err)
 
-	markerBuffer := make([]byte, 4)
-	marker, err := file.Read(markerBuffer)
+	defer file.Close()
+
+	reader := io.Reader(file)
+
+	var marker uint32
+	err = binary.Read(reader, binary.BigEndian, &marker)
 	check(err)
+
+	if marker == FlacMarker {
+		fmt.Println("This is a flac file!")
+	} else {
+		fmt.Println("This is not!")
+	}
 }
