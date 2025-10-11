@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -15,12 +16,6 @@ const (
 	VorbisCommentType = 4
 )
 
-func check(e error) {
-	if e != nil {
-		panic(e)
-	}
-}
-
 type blockHeader struct {
 	isLast    bool
 	blockType byte
@@ -33,17 +28,17 @@ func main() {
 	fmt.Println(filename)
 
 	file, err := os.Open(filename)
-	check(err)
+	if err != nil {
+		panic(err)
+	}
 
 	defer file.Close()
 
 	reader := io.Reader(file)
 
 	fmt.Println("Reading file signature")
-
 	var signature uint32
-	err = binary.Read(reader, binary.BigEndian, &signature)
-	check(err)
+	binary.Read(reader, binary.BigEndian, &signature)
 
 	if signature != FlacSignature {
 		fmt.Println("This is not a flac file! Exiting...")
@@ -60,6 +55,33 @@ func main() {
 			fmt.Printf("Streaminfo metadata block, %v bytes in length\n", header.blockSize)
 		case VorbisCommentType:
 			fmt.Printf("Vorbis comment metadata block, %v bytes in length\n", header.blockSize)
+
+			buffer := make([]byte, header.blockSize)
+			io.ReadFull(reader, buffer)
+			bytesReader := bytes.NewReader(buffer)
+
+			var vendorLength uint32
+			binary.Read(bytesReader, binary.LittleEndian, &vendorLength)
+			fmt.Printf("Vendor string length: %v bytes\n", vendorLength)
+
+			vendor := make([]byte, vendorLength)
+			io.ReadFull(bytesReader, vendor)
+			vendorString := string(vendor[:])
+			fmt.Println(vendorString)
+
+			var numberOfFields uint32
+			binary.Read(bytesReader, binary.LittleEndian, &numberOfFields)
+			fmt.Printf("Number of fields in vorbis comment: %v \n", numberOfFields)
+
+			for range numberOfFields {
+				var fieldLength uint32
+				binary.Read(bytesReader, binary.LittleEndian, &fieldLength)
+
+				field := make([]byte, fieldLength)
+				io.ReadFull(bytesReader, field)
+				fieldString := string(field[:])
+				fmt.Println(fieldString)
+			}
 		default:
 			fmt.Printf("Other metadata block of type %v\n", header.blockType)
 		}
@@ -68,16 +90,16 @@ func main() {
 			break
 		}
 
-		_, err := file.Seek(int64(header.blockSize), 1)
-		check(err)
+		if header.blockType != VorbisCommentType {
+			file.Seek(int64(header.blockSize), 1)
+		}
 	}
 }
 
 func readBlockHeader(reader io.Reader) *blockHeader {
 	raw := make([]byte, 4)
 
-	_, err := reader.Read(raw)
-	check(err)
+	reader.Read(raw)
 
 	header := blockHeader{
 		isLast:    (raw[0] >> 7) == 1,
