@@ -10,6 +10,11 @@ import (
 
 const FlacSignature uint32 = 0x664C6143
 
+const (
+	StreamInfoType    = 0
+	VorbisCommentType = 4
+)
+
 func check(e error) {
 	if e != nil {
 		panic(e)
@@ -47,13 +52,25 @@ func main() {
 
 	fmt.Println("This is a flac file!")
 
-	firstBlock := readBlockHeader(reader)
+	for {
+		header := readBlockHeader(reader)
 
-	fmt.Printf("%v\n", firstBlock)
+		switch header.blockType {
+		case StreamInfoType:
+			fmt.Printf("Streaminfo metadata block, %v bytes in length\n", header.blockSize)
+		case VorbisCommentType:
+			fmt.Printf("Vorbis comment metadata block, %v bytes in length\n", header.blockSize)
+		default:
+			fmt.Printf("Other metadata block of type %v\n", header.blockType)
+		}
 
-	fmt.Printf("Is this the last metadata block in the file: %v\n", firstBlock.isLast)
-	fmt.Printf("Metadata block type: %v\n", firstBlock.blockType)
-	fmt.Printf("Block size in bytes: %v\n", firstBlock.blockSize)
+		if header.isLast {
+			break
+		}
+
+		_, err := file.Seek(int64(header.blockSize), 1)
+		check(err)
+	}
 }
 
 func readBlockHeader(reader io.Reader) *blockHeader {
