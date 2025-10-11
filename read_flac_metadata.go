@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-const FlacMarker uint32 = 0x664C6143
+const FlacSignature uint32 = 0x664C6143
 
 func check(e error) {
 	if e != nil {
@@ -34,11 +34,13 @@ func main() {
 
 	reader := io.Reader(file)
 
-	var marker uint32
-	err = binary.Read(reader, binary.BigEndian, &marker)
+	fmt.Println("Reading file signature")
+
+	var signature uint32
+	err = binary.Read(reader, binary.BigEndian, &signature)
 	check(err)
 
-	if marker != FlacMarker {
+	if signature != FlacSignature {
 		fmt.Println("This is not a flac file! Exiting...")
 		panic(errors.New("Cannot read a non-flac file"))
 	}
@@ -47,9 +49,11 @@ func main() {
 
 	firstBlock := readBlockHeader(reader)
 
-	fmt.Println(firstBlock.isLast)
-	fmt.Println(firstBlock.blockType)
-	fmt.Println(firstBlock.blockSize)
+	fmt.Printf("%v\n", firstBlock)
+
+	fmt.Printf("Is this the last metadata block in the file: %v\n", firstBlock.isLast)
+	fmt.Printf("Metadata block type: %v\n", firstBlock.blockType)
+	fmt.Printf("Block size in bytes: %v\n", firstBlock.blockSize)
 }
 
 func readBlockHeader(reader io.Reader) *blockHeader {
