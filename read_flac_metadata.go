@@ -54,33 +54,7 @@ func main() {
 			fmt.Printf("Streaminfo metadata block, %v bytes in length\n", header.blockSize)
 		case VorbisCommentType:
 			fmt.Printf("Vorbis comment metadata block, %v bytes in length\n", header.blockSize)
-
-			buffer := make([]byte, header.blockSize)
-			io.ReadFull(reader, buffer)
-			bytesReader := bytes.NewReader(buffer)
-
-			var vendorLength uint32
-			binary.Read(bytesReader, binary.LittleEndian, &vendorLength)
-			fmt.Printf("Vendor string length: %v bytes\n", vendorLength)
-
-			vendor := make([]byte, vendorLength)
-			io.ReadFull(bytesReader, vendor)
-			vendorString := string(vendor[:])
-			fmt.Println(vendorString)
-
-			var numberOfFields uint32
-			binary.Read(bytesReader, binary.LittleEndian, &numberOfFields)
-			fmt.Printf("Number of fields in vorbis comment: %v \n", numberOfFields)
-
-			for range numberOfFields {
-				var fieldLength uint32
-				binary.Read(bytesReader, binary.LittleEndian, &fieldLength)
-
-				field := make([]byte, fieldLength)
-				io.ReadFull(bytesReader, field)
-				fieldString := string(field[:])
-				fmt.Println(fieldString)
-			}
+			parseVorbisComment(reader, header)
 		default:
 			fmt.Printf("Other metadata block of type %v\n", header.blockType)
 		}
@@ -109,4 +83,33 @@ func readBlockHeader(reader io.Reader) *blockHeader {
 	}
 
 	return &header
+}
+
+func parseVorbisComment(reader io.Reader, header *blockHeader) {
+buffer := make([]byte, header.blockSize)
+			io.ReadFull(reader, buffer)
+			bytesReader := bytes.NewReader(buffer)
+
+			var vendorLength uint32
+			binary.Read(bytesReader, binary.LittleEndian, &vendorLength)
+			fmt.Printf("Vendor string length: %v bytes\n", vendorLength)
+
+			vendor := make([]byte, vendorLength)
+			io.ReadFull(bytesReader, vendor)
+			vendorString := string(vendor[:])
+			fmt.Println(vendorString)
+
+			var numberOfFields uint32
+			binary.Read(bytesReader, binary.LittleEndian, &numberOfFields)
+			fmt.Printf("Number of fields in vorbis comment: %v \n", numberOfFields)
+
+			for range numberOfFields {
+				var fieldLength uint32
+				binary.Read(bytesReader, binary.LittleEndian, &fieldLength)
+
+				field := make([]byte, fieldLength)
+				io.ReadFull(bytesReader, field)
+				fieldString := string(field[:])
+				fmt.Println(fieldString)
+			}
 }
