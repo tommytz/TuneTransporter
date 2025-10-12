@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -36,16 +35,16 @@ func main() {
 
 	reader := io.Reader(file)
 
-	fmt.Println("Reading file signature")
+	fmt.Print("Reading file signature... ")
 	var signature uint32
 	binary.Read(reader, binary.BigEndian, &signature)
 
 	if signature != FlacSignature {
 		fmt.Println("This is not a flac file! Exiting...")
-		panic(errors.New("Cannot read a non-flac file"))
+		os.Exit(1)
+	} else {
+		fmt.Println("This is a flac file!")
 	}
-
-	fmt.Println("This is a flac file!")
 
 	for {
 		header := readBlockHeader(reader)
@@ -86,12 +85,14 @@ func main() {
 			fmt.Printf("Other metadata block of type %v\n", header.blockType)
 		}
 
-		if header.isLast {
-			break
+		if header.blockType != VorbisCommentType {
+			fmt.Println("Seeking past unsupported metadata block")
+			file.Seek(int64(header.blockSize), 1)
 		}
 
-		if header.blockType != VorbisCommentType {
-			file.Seek(int64(header.blockSize), 1)
+		if header.isLast {
+			fmt.Println("No more metadata blocks to parse")
+			break
 		}
 	}
 }
