@@ -76,6 +76,9 @@ func main() {
 		if header.BlockType == VorbisCommentType {
 			metadata, _ := parseVorbisComment(reader, file)
 			fmt.Printf("%+v\n", metadata)
+
+			formattedFilename := formatFilename(metadata)
+			fmt.Println(formattedFilename)
 		} else {
 			_, err = file.Seek(int64(header.BlockSize), io.SeekCurrent)
 			if err != nil {
@@ -164,4 +167,16 @@ func parseVorbisComment(reader io.Reader, file *os.File) (*Metadata, error) {
 	}
 
 	return &metadata, nil
+}
+
+func formatFilename(metadata *Metadata) string {
+	var out string
+
+	if metadata.DiscTotal > 1 {
+		out = fmt.Sprintf("%d%02d - %s.flac", metadata.DiscNumber, metadata.TrackNumber, metadata.Title)
+	} else {
+		out = fmt.Sprintf("%02d - %s.flac", metadata.TrackNumber, metadata.Title)
+	}
+
+	return strings.ReplaceAll(out, string(os.PathSeparator), "+")
 }
