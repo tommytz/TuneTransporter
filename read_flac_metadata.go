@@ -51,11 +51,9 @@ func main() {
 
 	defer file.Close() // Find out if this is necessary
 
-	reader := io.Reader(file)
-
 	var signature uint32
 
-	err = binary.Read(reader, binary.BigEndian, &signature)
+	err = binary.Read(file, binary.BigEndian, &signature)
 	if err != nil {
 		file.Close()
 		log.Fatalf("Unable to read file signature: %v", err)
@@ -67,14 +65,14 @@ func main() {
 	}
 
 	for {
-		header, err := readBlockHeader(reader)
+		header, err := readBlockHeader(file)
 		if err != nil {
 			file.Close()
 			log.Fatalf("Unable to parse block header: %v", err)
 		}
 
 		if header.BlockType == VorbisCommentType {
-			metadata, _ := parseVorbisComment(reader, file)
+			metadata, _ := parseVorbisComment(file)
 			fmt.Printf("%+v\n", metadata)
 
 			formattedFilename := formatFilename(metadata)
@@ -111,14 +109,14 @@ func readBlockHeader(reader io.Reader) (*BlockHeader, error) {
 	return &header, nil
 }
 
-func parseVorbisComment(reader io.Reader, file *os.File) (*Metadata, error) {
+func parseVorbisComment(reader io.ReadSeeker) (*Metadata, error) {
 	var vendorLength uint32
 	err := binary.Read(reader, binary.LittleEndian, &vendorLength)
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = file.Seek(int64(vendorLength), io.SeekCurrent)
+	_, err = reader.Seek(int64(vendorLength), io.SeekCurrent)
 	if err != nil {
 		return nil, err
 	}
