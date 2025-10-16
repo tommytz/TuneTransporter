@@ -12,7 +12,7 @@ import (
 
 const FlacSignature uint32 = 0x664C6143
 const VorbisCommentType = 4
-
+const PathSeparatorReplacement = "+"
 const MusicDirEnvVar = "MUSIC_DIR"
 
 type BlockHeader struct {
@@ -33,7 +33,7 @@ type Metadata struct {
 func main() {
 	musicDir, found := os.LookupEnv(MusicDirEnvVar)
 	if !found {
-		log.Fatal("The path to the music directory has not been set in env.")
+		log.Fatalf("Missing environment variable %s", MusicDirEnvVar)
 	}
 
 	fmt.Println(musicDir) // TODO: Remove this later
@@ -129,11 +129,20 @@ func parseVorbisComment(reader io.Reader, file *os.File) (*Metadata, error) {
 		return nil, err
 	}
 
+	metadata, err := parseFields(numberOfFields, reader)
+	if err != nil {
+		return nil, err
+	}
+
+	return metadata, nil
+}
+
+func parseFields(numberOfFields uint32, reader io.Reader) (*Metadata, error) {
 	metadata := Metadata{}
 
 	for range numberOfFields {
 		var fieldLength uint32
-		err = binary.Read(reader, binary.LittleEndian, &fieldLength)
+		err := binary.Read(reader, binary.LittleEndian, &fieldLength)
 		if err != nil {
 			return nil, err
 		}
@@ -155,15 +164,28 @@ func parseVorbisComment(reader io.Reader, file *os.File) (*Metadata, error) {
 		case "ALBUM":
 			metadata.Album = fieldParts[1]
 		case "TRACKNUMBER":
-			i, _ := strconv.Atoi(fieldParts[1])
+			i, err := strconv.Atoi(fieldParts[1])
+			if err != nil {
+				return nil, err
+			}
+
 			metadata.TrackNumber = i
 		case "DISCNUMBER":
-			i, _ := strconv.Atoi(fieldParts[1])
+			i, err := strconv.Atoi(fieldParts[1])
+			if err != nil {
+				return nil, err
+			}
+
 			metadata.DiscNumber = i
 		case "DISCTOTAL":
-			i, _ := strconv.Atoi(fieldParts[1])
+			i, err := strconv.Atoi(fieldParts[1])
+			if err != nil {
+				return nil, err
+			}
+
 			metadata.DiscTotal = i
 		}
+
 	}
 
 	return &metadata, nil
@@ -173,10 +195,14 @@ func formatFilename(metadata *Metadata) string {
 	var out string
 
 	if metadata.DiscTotal > 1 {
+		// {medium:0}{track:00} - {Track Title}
 		out = fmt.Sprintf("%d%02d - %s.flac", metadata.DiscNumber, metadata.TrackNumber, metadata.Title)
 	} else {
+		// {track:00} - {Track Title}
 		out = fmt.Sprintf("%02d - %s.flac", metadata.TrackNumber, metadata.Title)
 	}
 
-	return strings.ReplaceAll(out, string(os.PathSeparator), "+")
+	sanitised := strings.ReplaceAll(out, string(os.PathSeparator), PathSeparatorReplacement)
+
+	return sanitised
 }
