@@ -13,6 +13,8 @@ import (
 const FlacSignature uint32 = 0x664C6143
 const VorbisCommentType = 4
 
+const MusicDirEnvVar = "MUSIC_DIR"
+
 type BlockHeader struct {
 	IsLast    bool
 	BlockType byte
@@ -21,7 +23,6 @@ type BlockHeader struct {
 
 type Metadata struct {
 	Title       string
-	Artist      string
 	AlbumArtist string
 	Album       string
 	TrackNumber int
@@ -30,10 +31,18 @@ type Metadata struct {
 }
 
 func main() {
-	filename := os.Args[1]
-	// TODO: Find how to get the full path to the file
+	musicDir, found := os.LookupEnv(MusicDirEnvVar)
+	if !found {
+		log.Fatal("The path to the music directory has not been set in env.")
+	}
 
-	fmt.Println(filename)
+	fmt.Println(musicDir) // TODO: Remove this later
+
+	if len(os.Args) == 1 {
+		log.Fatal("Missing filename argument") // TODO: Remove this when using events from slskd
+	}
+
+	filename := os.Args[1] // TODO: Remove this when using events from slskd
 
 	file, err := os.Open(filename)
 	if err != nil {
@@ -65,10 +74,10 @@ func main() {
 		}
 
 		if header.BlockType == VorbisCommentType {
-			metadata, _ := parseVorbisComment(reader)
+			metadata, _ := parseVorbisComment(reader, file)
 			fmt.Printf("%+v\n", metadata)
 		} else {
-			_, err = file.Seek(int64(header.BlockSize), 1)
+			_, err = file.Seek(int64(header.BlockSize), io.SeekCurrent)
 			if err != nil {
 				file.Close()
 				log.Fatalf("Failed to seek past metadata block: %v, %v", header.BlockType, err)
@@ -76,7 +85,6 @@ func main() {
 		}
 
 		if header.IsLast {
-			fmt.Println("No more metadata blocks to parse")
 			file.Close()
 			break
 		}
@@ -100,37 +108,45 @@ func readBlockHeader(reader io.Reader) (*BlockHeader, error) {
 	return &header, nil
 }
 
-func parseVorbisComment(reader io.Reader) (*Metadata, error) {
+func parseVorbisComment(reader io.Reader, file *os.File) (*Metadata, error) {
 	var vendorLength uint32
-	binary.Read(reader, binary.LittleEndian, &vendorLength)
-	fmt.Printf("Vendor string length: %v bytes\n", vendorLength)
+	err := binary.Read(reader, binary.LittleEndian, &vendorLength)
+	if err != nil {
+		return nil, err
+	}
 
-	vendor := make([]byte, vendorLength)
-	io.ReadFull(reader, vendor)
-	vendorString := string(vendor[:])
-	fmt.Println(vendorString)
+	_, err = file.Seek(int64(vendorLength), io.SeekCurrent)
+	if err != nil {
+		return nil, err
+	}
 
 	var numberOfFields uint32
-	binary.Read(reader, binary.LittleEndian, &numberOfFields)
-	fmt.Printf("Number of fields in vorbis comment: %v \n", numberOfFields)
+	err = binary.Read(reader, binary.LittleEndian, &numberOfFields)
+	if err != nil {
+		return nil, err
+	}
 
 	metadata := Metadata{}
 
 	for range numberOfFields {
 		var fieldLength uint32
-		binary.Read(reader, binary.LittleEndian, &fieldLength)
+		err = binary.Read(reader, binary.LittleEndian, &fieldLength)
+		if err != nil {
+			return nil, err
+		}
 
 		field := make([]byte, fieldLength)
-		io.ReadFull(reader, field)
-		fieldString := string(field[:])
+		_, err = io.ReadFull(reader, field)
+		if err != nil {
+			return nil, err
+		}
 
+		fieldString := string(field[:])
 		fieldParts := strings.Split(fieldString, "=")
 
 		switch fieldParts[0] {
 		case "TITLE":
 			metadata.Title = fieldParts[1]
-		case "ARTIST":
-			metadata.Artist = fieldParts[1]
 		case "ALBUMARTIST":
 			metadata.AlbumArtist = fieldParts[1]
 		case "ALBUM":
