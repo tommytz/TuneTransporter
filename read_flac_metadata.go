@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"path/filepath"
 	"fmt"
 	"io"
 	"log"
@@ -35,8 +36,6 @@ func main() {
 	if !found {
 		log.Fatalf("Missing environment variable %s", MusicDirEnvVar)
 	}
-
-	fmt.Println(musicDir) // TODO: Remove this later
 
 	if len(os.Args) == 1 {
 		log.Fatal("Missing filename argument") // TODO: Remove this when using events from slskd
@@ -75,8 +74,20 @@ func main() {
 			metadata, _ := parseVorbisComment(file)
 			fmt.Printf("%+v\n", metadata)
 
-			formattedFilename := formatFilename(metadata)
-			fmt.Println(formattedFilename)
+			// TODO: Should the file be closed at this point since we no longer need to read it?
+
+			newFilepath := formatFilepath(metadata, musicDir)
+			fmt.Println(newFilepath)
+
+			err = os.MkdirAll(filepath.Dir(newFilepath), 0777)
+			if err != nil {
+				log.Fatalf("Failed to create artist and album directory: %v", err)
+			}
+
+			err = os.Rename(filename, newFilepath)
+			if err != nil {
+				log.Fatalf("Failed to move %v to new path at %v", filename, newFilepath)
+			}
 		} else {
 			_, err = file.Seek(int64(header.BlockSize), io.SeekCurrent)
 			if err != nil {
@@ -189,18 +200,22 @@ func parseFields(numberOfFields uint32, reader io.Reader) (*Metadata, error) {
 	return &metadata, nil
 }
 
-func formatFilename(metadata *Metadata) string {
-	var out string
+func formatFilepath(metadata *Metadata, musicDir string) string {
+	var filename string
+	artist := sanitise(metadata.AlbumArtist)
+	album := sanitise(metadata.Album)
 
 	if metadata.DiscTotal > 1 {
 		// {medium:0}{track:00} - {Track Title}
-		out = fmt.Sprintf("%d%02d - %s.flac", metadata.DiscNumber, metadata.TrackNumber, metadata.Title)
+		filename = sanitise(fmt.Sprintf("%d%02d - %s.flac", metadata.DiscNumber, metadata.TrackNumber, metadata.Title))
 	} else {
 		// {track:00} - {Track Title}
-		out = fmt.Sprintf("%02d - %s.flac", metadata.TrackNumber, metadata.Title)
+		filename = sanitise(fmt.Sprintf("%02d - %s.flac", metadata.TrackNumber, metadata.Title))
 	}
 
-	sanitised := strings.ReplaceAll(out, string(os.PathSeparator), PathSeparatorReplacement)
+	return filepath.Join(musicDir, artist, album, filename)
+}
 
-	return sanitised
+func sanitise(s string) string {
+	return strings.ReplaceAll(s, string(os.PathSeparator), PathSeparatorReplacement)
 }
