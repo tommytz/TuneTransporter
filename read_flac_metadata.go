@@ -2,11 +2,12 @@ package main
 
 import (
 	"encoding/binary"
-	"path/filepath"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -15,6 +16,7 @@ const FlacSignature uint32 = 0x664C6143
 const VorbisCommentType = 4
 const PathSeparatorReplacement = "+"
 const MusicDirEnvVar = "MUSIC_DIR"
+const SlskdEventEnvVar = "SLSKD_SCRIPT_DATA"
 
 type BlockHeader struct {
 	IsLast    bool
@@ -31,17 +33,45 @@ type Metadata struct {
 	DiscTotal   int
 }
 
+type SlskdEvent struct {
+	Id                  string
+	Timestamp           string
+	Type                string
+	Version             int
+	LocalDirectoryName  string
+	RemoteDirectoryName string
+	Username            string
+}
+
 func main() {
-	musicDir, found := os.LookupEnv(MusicDirEnvVar)
-	if !found {
+	musicDir, ok := os.LookupEnv(MusicDirEnvVar)
+	if !ok {
 		log.Fatalf("Missing environment variable %s", MusicDirEnvVar)
 	}
 
-	if len(os.Args) == 1 {
-		log.Fatal("Missing filename argument") // TODO: Remove this when using events from slskd
+	jsonEvent, ok := os.LookupEnv(SlskdEventEnvVar)
+	if !ok {
+		log.Fatalf("Missing environment variable %s", SlskdEventEnvVar)
 	}
 
-	filename := os.Args[1] // TODO: Remove this when using events from slskd
+	var event SlskdEvent
+	err := json.Unmarshal([]byte(jsonEvent), &event)
+	if err != nil {
+		log.Fatalf("Couldn't read event, %v", err)
+	}
+
+	fmt.Printf("%+v\n", event)
+
+	files, err := os.ReadDir(event.LocalDirectoryName)
+	if err != nil {
+		log.Fatalf("Couldn't read directory %s, %v", event.LocalDirectoryName, err)
+	}
+
+	fmt.Printf("%v\n", files)
+	base := files[0].Name()
+	filename := filepath.Join(event.LocalDirectoryName, base)
+
+	// TODO: Iterate through all files in directory to move them to target directory
 
 	file, err := os.Open(filename)
 	if err != nil {
