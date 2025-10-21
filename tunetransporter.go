@@ -62,75 +62,94 @@ func main() {
 
 	fmt.Printf("%+v\n", event)
 
-	files, err := os.ReadDir(event.LocalDirectoryName)
+	files, err := readDirectory(event)
 	if err != nil {
-		log.Fatalf("Couldn't read directory %s, %v", event.LocalDirectoryName, err)
+		log.Fatalf("Couldn't read directory contents, %v", err)
 	}
 
 	fmt.Printf("%v\n", files)
-	base := files[0].Name()
-	filename := filepath.Join(event.LocalDirectoryName, base)
 
-	// TODO: Iterate through all files in directory to move them to target directory
+	for _, filename := range files {
+		// TODO: Create a context struct with state like env var directories and methods like processFile
+		err := processFile(filename, musicDir)
 
-	file, err := os.Open(filename)
+		if err != nil {
+			log.Printf("Skipping %v due to error: %v", filename, err)
+			continue
+		}
+	}
+}
+
+func readDirectory(event SlskdEvent) ([]string, error) {
+	contents, err := os.ReadDir(event.LocalDirectoryName)
 	if err != nil {
-		log.Fatalf("Unable to open file: %v", filename)
+		return nil, err
 	}
 
-	defer file.Close() // Find out if this is necessary
+	var paths []string
+
+	for _, file := range contents {
+		base := file.Name()
+		filename := filepath.Join(event.LocalDirectoryName, base)
+		paths = append(paths, filename)
+	}
+
+	return paths, nil
+}
+
+func processFile(filename, musicDir string) error {
+	file, err := os.Open(filename)
+	if err != nil {
+		return fmt.Errorf("Unable to open file: %w", err)
+	}
+
+	defer file.Close()
 
 	var signature uint32
-
 	err = binary.Read(file, binary.BigEndian, &signature)
 	if err != nil {
-		file.Close()
-		log.Fatalf("Unable to read file signature: %v", err)
+		return fmt.Errorf("Unable to read file signature: %w", err)
 	}
 
 	if signature != FlacSignature {
-		file.Close()
-		log.Fatalf("%v is not a .flac file.", filename)
+		return fmt.Errorf("%v is not a .flac file.", filename)
 	}
 
 	for {
 		header, err := readBlockHeader(file)
 		if err != nil {
-			file.Close()
-			log.Fatalf("Unable to parse block header: %v", err)
+			return fmt.Errorf("Unable to parse block header: %w", err)
 		}
 
 		if header.BlockType == VorbisCommentType {
 			metadata, _ := parseVorbisComment(file)
 			fmt.Printf("%+v\n", metadata)
 
-			// TODO: Should the file be closed at this point since we no longer need to read it?
-
 			newFilepath := formatFilepath(metadata, musicDir)
 			fmt.Println(newFilepath)
 
 			err = os.MkdirAll(filepath.Dir(newFilepath), 0777)
 			if err != nil {
-				log.Fatalf("Failed to create artist and album directory: %v", err)
+				return fmt.Errorf("Failed to create artist and album directory: %w", err)
 			}
 
 			err = os.Rename(filename, newFilepath)
 			if err != nil {
-				log.Fatalf("Failed to move %v to new path at %v", filename, newFilepath)
+				return fmt.Errorf("Failed to move file: %w", err)
 			}
 		} else {
 			_, err = file.Seek(int64(header.BlockSize), io.SeekCurrent)
 			if err != nil {
-				file.Close()
-				log.Fatalf("Failed to seek past metadata block: %v, %v", header.BlockType, err)
+				return fmt.Errorf("Failed to seek past metadata block: %w", err)
 			}
 		}
 
 		if header.IsLast {
-			file.Close()
 			break
 		}
 	}
+
+	return nil
 }
 
 func readBlockHeader(reader io.Reader) (*BlockHeader, error) {
