@@ -15,7 +15,7 @@ import (
 const FlacSignature uint32 = 0x664C6143
 const VorbisCommentType = 4
 const PathSeparatorReplacement = "+"
-const MusicDirEnvVar = "MUSIC_DIR"
+const MusicDirEnvVar = "TUNE_TRANSPORTER_MUSIC_PATH"
 const SlskdEventEnvVar = "SLSKD_SCRIPT_DATA"
 
 type BlockHeader struct {
@@ -46,12 +46,12 @@ type SlskdEvent struct {
 func main() {
 	musicDir, ok := os.LookupEnv(MusicDirEnvVar)
 	if !ok {
-		log.Fatalf("Missing environment variable %s", MusicDirEnvVar)
+		log.Fatalf("Missing environment variable: %s", MusicDirEnvVar)
 	}
 
 	jsonEvent, ok := os.LookupEnv(SlskdEventEnvVar)
 	if !ok {
-		log.Fatalf("Missing environment variable %s", SlskdEventEnvVar)
+		log.Fatalf("Missing environment variable: %s", SlskdEventEnvVar)
 	}
 
 	var event SlskdEvent
@@ -59,8 +59,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Couldn't read event, %v", err)
 	}
-
-	fmt.Printf("%+v\n", event)
 
 	files, err := readDirectory(event)
 	if err != nil {
