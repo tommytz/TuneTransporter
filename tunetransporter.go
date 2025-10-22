@@ -67,6 +67,8 @@ func main() {
 
 	fmt.Printf("%v\n", files)
 
+	// TODO: Move flac specific code into a flac submodule
+
 	for _, filename := range files {
 		// TODO: Create a context struct with state like env var directories and methods like processFile
 		err := processFile(filename, musicDir)
@@ -76,6 +78,8 @@ func main() {
 			continue
 		}
 	}
+
+	// TODO: Clean up directory afterwards if successful!
 }
 
 func readDirectory(event SlskdEvent) ([]string, error) {
