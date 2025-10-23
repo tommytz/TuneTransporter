@@ -44,6 +44,12 @@ type SlskdEvent struct {
 	Username            string
 }
 
+// TODO
+// cli args to work with file, list of file, or directory
+// logging to a file so I can debug later if things don't work
+// cli arg for verbose logging (ie do I want to see it in stdout) of metadata parsing
+// change music dir from env var to cli arg
+// create modules and refactor
 func main() {
 	musicDir, ok := os.LookupEnv(MusicDirEnvVar)
 	if !ok {
