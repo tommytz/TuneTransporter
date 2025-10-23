@@ -150,7 +150,6 @@ func processFile(filename, musicDir string) error {
 
 		if header.BlockType == VorbisCommentType {
 			metadata, _ := parseVorbisComment(file)
-			fmt.Printf("%+v\n", metadata)
 
 			newFilepath := formatFilepath(metadata, musicDir)
 			fmt.Println(newFilepath)
@@ -214,16 +213,34 @@ func parseVorbisComment(reader io.ReadSeeker) (*Metadata, error) {
 		return nil, err
 	}
 
-	metadata, err := parseFields(numberOfFields, reader)
+	fields, err := readFields(numberOfFields, reader)
 	if err != nil {
 		return nil, err
 	}
 
-	return metadata, nil
+	for key, value := range fields {
+		fmt.Printf("%v=%v\n", key, value)
+	}
+
+	trackNumber := safeAtoi(fields["TRACKNUMBER"])
+	discNumber := safeAtoi(fields["DISCNUMBER"])
+	discTotal := safeAtoi(fields["DISCTOTAL"])
+
+	metadata := Metadata{
+		Title:       fields["TITLE"],
+		AlbumArtist: fields["ALBUMARTIST"],
+		Album:       fields["ALBUM"],
+		TrackNumber: trackNumber,
+		DiscNumber:  discNumber,
+		DiscTotal:   discTotal,
+	}
+	fmt.Printf("%+v\n", metadata)
+
+	return &metadata, nil
 }
 
-func parseFields(numberOfFields uint32, reader io.Reader) (*Metadata, error) {
-	metadata := Metadata{}
+func readFields(numberOfFields uint32, reader io.Reader) (map[string]string, error) {
+	fields := make(map[string]string)
 
 	for range numberOfFields {
 		var fieldLength uint32
@@ -240,40 +257,10 @@ func parseFields(numberOfFields uint32, reader io.Reader) (*Metadata, error) {
 
 		fieldString := string(field[:])
 		fieldParts := strings.Split(fieldString, "=")
-
-		switch fieldParts[0] {
-		case "TITLE":
-			metadata.Title = fieldParts[1]
-		case "ALBUMARTIST":
-			metadata.AlbumArtist = fieldParts[1]
-		case "ALBUM":
-			metadata.Album = fieldParts[1]
-		case "TRACKNUMBER":
-			i, err := strconv.Atoi(fieldParts[1])
-			if err != nil {
-				return nil, err
-			}
-
-			metadata.TrackNumber = i
-		case "DISCNUMBER":
-			i, err := strconv.Atoi(fieldParts[1])
-			if err != nil {
-				return nil, err
-			}
-
-			metadata.DiscNumber = i
-		case "DISCTOTAL":
-			i, err := strconv.Atoi(fieldParts[1])
-			if err != nil {
-				return nil, err
-			}
-
-			metadata.DiscTotal = i
-		}
-
+		fields[fieldParts[0]] = fieldParts[1]
 	}
 
-	return &metadata, nil
+	return fields, nil
 }
 
 func formatFilepath(metadata *Metadata, musicDir string) string {
@@ -294,4 +281,17 @@ func formatFilepath(metadata *Metadata, musicDir string) string {
 
 func sanitise(s string) string {
 	return strings.ReplaceAll(s, string(os.PathSeparator), PathSeparatorReplacement)
+}
+
+func safeAtoi(s string) int {
+	if s == "" {
+		return 0
+	}
+
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0
+	}
+
+	return n
 }
