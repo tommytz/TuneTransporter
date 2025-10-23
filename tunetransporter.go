@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -49,6 +50,24 @@ func main() {
 		log.Fatalf("Missing environment variable: %s", MusicDirEnvVar)
 	}
 
+	filename := flag.String("file", "", "the name of the file to use")
+	flag.Parse()
+
+	fmt.Println(os.Args)
+	fmt.Println(*filename)
+
+	if *filename != "" {
+		log.Println("Single file mode: ", *filename)
+
+		err := processFile(*filename, musicDir)
+		if err != nil {
+			log.Fatalf("Couldn't parse file: %v", err)
+		}
+
+		os.Exit(0)
+	}
+
+	log.Println("JSON event parsing mode")
 	jsonEvent, ok := os.LookupEnv(SlskdEventEnvVar)
 	if !ok {
 		log.Fatalf("Missing environment variable: %s", SlskdEventEnvVar)
