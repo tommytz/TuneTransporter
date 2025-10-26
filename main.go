@@ -13,7 +13,6 @@ import (
 )
 
 const PathSeparatorReplacement = "+"
-const MusicDirEnvVar = "TUNE_TRANSPORTER_MUSIC_PATH"
 const SlskdEventEnvVar = "SLSKD_SCRIPT_DATA"
 
 type SlskdEvent struct {
@@ -33,11 +32,7 @@ type SlskdEvent struct {
 // change music dir from env var to cli arg
 // create modules and refactor
 func main() {
-	musicDir, ok := os.LookupEnv(MusicDirEnvVar)
-	if !ok {
-		log.Fatalf("Missing environment variable: %s", MusicDirEnvVar)
-	}
-
+	musicDir := flag.String("musicDir", "", "the music directory to write to")
 	filename := flag.String("file", "", "the name of the file to use")
 	flag.Parse()
 
@@ -47,7 +42,7 @@ func main() {
 	if *filename != "" {
 		log.Println("Single file mode: ", *filename)
 
-		err := processFile(*filename, musicDir)
+		err := processFile(*filename, *musicDir)
 		if err != nil {
 			log.Fatalf("Couldn't parse file: %v", err)
 		}
@@ -78,7 +73,7 @@ func main() {
 
 	for _, filename := range files {
 		// TODO: Create a context struct with state like env var directories and methods like processFile
-		err := processFile(filename, musicDir)
+		err := processFile(filename, *musicDir)
 
 		if err != nil {
 			log.Printf("Skipping %v due to error: %v", filename, err)
