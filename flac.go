@@ -17,7 +17,48 @@ type BlockHeader struct {
 	BlockSize uint32
 }
 
-func ReadBlockHeader(reader io.Reader) (*BlockHeader, error) {
+func ParseMetadata(reader io.ReadSeeker) (*Metadata, error) {
+	var signature uint32
+	err := binary.Read(reader, binary.BigEndian, &signature)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to read file signature: %w", err)
+	}
+
+	if signature != FlacSignature {
+		return nil, fmt.Errorf("not a .flac file.")
+	}
+
+	var metadata *Metadata
+
+	for {
+		header, err := readBlockHeader(reader)
+		if err != nil {
+			return nil, fmt.Errorf("Unable to parse block header: %w", err)
+		}
+
+		if header.BlockType == VorbisCommentType {
+			metadata, err = parseVorbisComment(reader)
+			break
+		} else {
+			_, err = reader.Seek(int64(header.BlockSize), io.SeekCurrent)
+			if err != nil {
+				return nil, fmt.Errorf("Failed to seek past metadata block: %w", err)
+			}
+		}
+
+		if header.IsLast {
+			break
+		}
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return metadata, nil
+}
+
+func readBlockHeader(reader io.Reader) (*BlockHeader, error) {
 	raw := make([]byte, 4)
 
 	_, err := reader.Read(raw)
@@ -34,7 +75,7 @@ func ReadBlockHeader(reader io.Reader) (*BlockHeader, error) {
 	return &header, nil
 }
 
-func ParseVorbisComment(reader io.ReadSeeker) (*Metadata, error) {
+func parseVorbisComment(reader io.ReadSeeker) (*Metadata, error) {
 	var vendorLength uint32
 	err := binary.Read(reader, binary.LittleEndian, &vendorLength)
 	if err != nil {

@@ -1,11 +1,9 @@
 package main
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -109,47 +107,22 @@ func processFile(filename, musicDir string) error {
 
 	defer file.Close()
 
-	var signature uint32
-	err = binary.Read(file, binary.BigEndian, &signature)
+	metadata, err := ParseMetadata(file)
 	if err != nil {
-		return fmt.Errorf("Unable to read file signature: %w", err)
+		return err
 	}
 
-	if signature != FlacSignature {
-		return fmt.Errorf("%v is not a .flac file.", filename)
+	newFilepath := formatFilepath(metadata, musicDir)
+	fmt.Println(newFilepath)
+
+	err = os.MkdirAll(filepath.Dir(newFilepath), 0777)
+	if err != nil {
+		return fmt.Errorf("Failed to create artist and album directory: %w", err)
 	}
 
-	for {
-		header, err := ReadBlockHeader(file)
-		if err != nil {
-			return fmt.Errorf("Unable to parse block header: %w", err)
-		}
-
-		if header.BlockType == VorbisCommentType {
-			metadata, _ := ParseVorbisComment(file)
-
-			newFilepath := formatFilepath(metadata, musicDir)
-			fmt.Println(newFilepath)
-
-			err = os.MkdirAll(filepath.Dir(newFilepath), 0777)
-			if err != nil {
-				return fmt.Errorf("Failed to create artist and album directory: %w", err)
-			}
-
-			err = os.Rename(filename, newFilepath)
-			if err != nil {
-				return fmt.Errorf("Failed to move file: %w", err)
-			}
-		} else {
-			_, err = file.Seek(int64(header.BlockSize), io.SeekCurrent)
-			if err != nil {
-				return fmt.Errorf("Failed to seek past metadata block: %w", err)
-			}
-		}
-
-		if header.IsLast {
-			break
-		}
+	err = os.Rename(filename, newFilepath)
+	if err != nil {
+		return fmt.Errorf("Failed to move file: %w", err)
 	}
 
 	return nil
